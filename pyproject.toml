@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voc-detector"
+version = "0.1.0"
+description = "Raspberry Pi VOC detector (ENS160 + SGP40 + DHT22) with on-device model and cloud dashboard"
+requires-python = ">=3.9"
+dependencies = ["tomli; python_version < '3.11'"]
+
+[project.optional-dependencies]
+# On the Pi
+pi = [
+  "adafruit-blinka",
+  "adafruit-circuitpython-ens160",
+  "adafruit-circuitpython-sgp40",
+  "adafruit-circuitpython-dht",
+  "smbus2",
+  "gpiozero",
+]
+# On the laptop that trains the model
+train = ["numpy", "pandas", "scikit-learn", "matplotlib"]
+dev = ["pytest", "numpy", "pandas", "scikit-learn", "matplotlib"]
+
+[project.scripts]
+voc-detector = "voc_detector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,33 @@
+# /etc/voc-detector/config.toml  -  restart after editing:
+#   sudo systemctl restart voc-detector
+
+[device]
+id = "detector-01"                     # must match the id registered in the dashboard
+data_dir = "/var/lib/voc-detector"     # local log (SQLite)
+model_path = "/opt/voc-detector/models/model.json"
+sample_interval_s = 1.0                # SGP40's VOC index needs ~1 s sampling
+keep_days = 60                         # local log retention
+
+[sensors]
+dht22_pin = 4                          # BCM GPIO number of the DHT22 data wire
+# ens160_address = 0x53                # 0x53 (Adafruit) or 0x52; auto-detected if omitted
+simulate = false                       # true = fake sensors (testing without hardware)
+
+[battery]
+type = "auto"                          # auto | pisugar | ina219 | none
+cells = 1                              # INA219 HATs: Li-ion cells in series
+low_pct = 20                           # send "low battery" alert below this
+shutdown_pct = 5                       # shut down cleanly below this (protects SD card)
+auto_shutdown = true
+
+[alarm]
+gpio_pin = 0                           # BCM pin for an LED/buzzer on detection; 0 = none
+
+[cloud]
+enabled = false                        # set true once the dashboard is set up
+supabase_url = "https://YOUR-PROJECT.supabase.co"
+supabase_anon_key = "YOUR-ANON-KEY"    # public key, fine to keep here
+device_key = "YOUR-DEVICE-KEY"         # secret, from register_device() in the dashboard setup
+reading_interval_s = 10                # how often a reading is sent to the cloud
+heartbeat_interval_s = 60              # battery/health ping; dashboard marks offline after 3 missed
+upload_interval_s = 15

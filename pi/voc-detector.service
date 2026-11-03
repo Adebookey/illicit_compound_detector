@@ -1,0 +1,15 @@
+[Unit]
+Description=VOC detector (sensors, model, cloud upload)
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+User=__USER__
+Environment=VOC_DETECTOR_CONFIG=/etc/voc-detector/config.toml
+ExecStart=/opt/voc-detector/venv/bin/voc-detector run
+Restart=always
+RestartSec=10
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

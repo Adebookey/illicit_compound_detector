@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Detector Monitor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Detector Monitor</h1>
+    <div class="topbar-right">
+      <button id="notify-btn" class="ghost" hidden>Enable alerts</button>
+      <span id="user-email" class="muted"></span>
+      <button id="signout-btn" class="ghost" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <div id="alert-banner" class="banner" role="alert" hidden></div>
+
+  <main>
+    <!-- Sign in -->
+    <section id="login-view" class="card narrow" hidden>
+      <h2>Sign in</h2>
+      <form id="login-form">
+        <label>Email <input type="email" id="login-email" required autocomplete="username"></label>
+        <label>Password <input type="password" id="login-password" required autocomplete="current-password"></label>
+        <button type="submit" class="primary">Sign in</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </section>
+
+    <!-- Fleet overview -->
+    <section id="fleet-view" hidden>
+      <div class="section-head">
+        <h2>Devices</h2>
+        <span id="fleet-updated" class="muted"></span>
+      </div>
+      <div id="fleet" class="fleet"></div>
+      <p id="fleet-empty" class="muted" hidden>No devices registered yet. See docs/05-dashboard.md.</p>
+    </section>
+
+    <!-- Device detail -->
+    <section id="device-view" hidden>
+      <button id="back-btn" class="ghost">&larr; All devices</button>
+      <div class="section-head">
+        <h2 id="dev-title"></h2>
+        <div class="controls">
+          <div class="segmented" id="range-picker" role="group" aria-label="Time range">
+            <button data-range="3600">1 h</button>
+            <button data-range="86400" class="on">24 h</button>
+            <button data-range="604800">7 days</button>
+            <button data-range="2592000">30 days</button>
+          </div>
+          <button id="csv-btn" class="ghost">Download CSV</button>
+        </div>
+      </div>
+      <div id="dev-tiles" class="tiles"></div>
+      <div class="charts">
+        <figure class="chart-card"><figcaption>Detection score <span class="muted">(0&ndash;1, dashed line = alarm threshold)</span></figcaption><div class="chart-box"><canvas id="c-score"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Total VOC <span class="muted">(ppb, ENS160)</span></figcaption><div class="chart-box"><canvas id="c-tvoc"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>VOC index <span class="muted">(SGP40, 100 = normal)</span></figcaption><div class="chart-box"><canvas id="c-voc"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>eCO&#8322; <span class="muted">(ppm, ENS160)</span></figcaption><div class="chart-box"><canvas id="c-eco2"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Temperature <span class="muted">(&deg;C)</span></figcaption><div class="chart-box"><canvas id="c-temp"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Humidity <span class="muted">(%RH)</span></figcaption><div class="chart-box"><canvas id="c-rh"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Battery <span class="muted">(%)</span></figcaption><div class="chart-box"><canvas id="c-batt"></canvas></div></figure>
+      </div>
+      <div class="card">
+        <h3>Events</h3>
+        <div class="table-wrap">
+          <table id="events-table">
+            <thead><tr><th>Time</th><th>Event</th><th>Details</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

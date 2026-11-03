@@ -1,0 +1,14 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+# raw/processed sensor data stays out of git by default (may be large / sensitive)
+data/raw/*
+data/processed/*
+data/synthetic/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.png
+pi-backup.img
+.vercel
