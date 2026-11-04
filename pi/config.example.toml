@@ -9,7 +9,7 @@ sample_interval_s = 1.0                # SGP40's VOC index needs ~1 s sampling
 keep_days = 60                         # local log retention
 
 [sensors]
-dht22_pin = 4                          # BCM GPIO number of the DHT22 data wire
+dht22_pin = "auto"                     # or the BCM GPIO number of the DHT22 data wire, e.g. 4
 # ens160_address = 0x53                # 0x53 (Adafruit) or 0x52; auto-detected if omitted
 simulate = false                       # true = fake sensors (testing without hardware)
 

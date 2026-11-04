@@ -34,7 +34,7 @@ class Agent:
                 hub = SimulatedSensorHub(cfg["sensors"])
             else:
                 from .sensors import SensorHub
-                hub = SensorHub(cfg["sensors"])
+                hub = SensorHub(cfg["sensors"], cache_dir=dev["data_dir"])
         self.hub = hub
 
         self.model = None
@@ -153,6 +153,10 @@ class Agent:
             log.warning("battery read failed: %s", e)
             b = {"battery_pct": None, "charging": None, "battery_v": None}
         self._last_battery = b
+        try:
+            self.store.put("battery", {**b, "source": self.battery.kind, "ts": time.time()})
+        except Exception:  # noqa: BLE001
+            pass
         self._check_battery(b)
         if not self.uploader:
             return

@@ -1,10 +1,12 @@
-"""Command line: voc-detector {run,collect,status,export}."""
+"""Command line: voc-detector {run,guided,collect,status,export,train}."""
 
 import argparse
 import csv
 import datetime as dt
 import logging
 import os
+import shutil
+import subprocess
 import sys
 import time
 
@@ -51,6 +53,60 @@ def cmd_collect(args, cfg):
           "sensors recover before the next run.")
 
 
+def cmd_check(args, cfg):
+    """Quick health check after installing: service, each sensor, battery, model."""
+    ok = True
+    active = subprocess.run(["systemctl", "is-active", "voc-detector"], capture_output=True,
+                            text=True).stdout.strip() if shutil.which("systemctl") else "unknown"
+    print(f"service ............ {active}")
+    if active not in ("active", "unknown"):
+        print("   start it: sudo systemctl start voc-detector ; log: journalctl -u voc-detector -n 50")
+        ok = False
+    if not os.path.exists(_db(cfg)):
+        print("no data yet - wait a minute and run again")
+        sys.exit(1)
+    store = Storage(_db(cfg))
+    rows = list(store.iter_samples(time.time() - 30))
+    if not rows:
+        print("readings ........... NONE in the last 30 s (service starting, or crashed: see journalctl)")
+        sys.exit(1)
+    print(f"readings ........... {len(rows)} in the last 30 s")
+
+    def seen(*cols):
+        return any(r.get(c) is not None for r in rows for c in cols)
+    last = rows[-1]
+    checks = [
+        ("ENS160", seen("ens_tvoc"), f"TVOC {last.get('ens_tvoc')} ppb, eCO2 {last.get('ens_eco2')}",
+         "check wiring (3.3V, GND, SDA=GPIO2, SCL=GPIO3); `sudo i2cdetect -y 1` should show 52/53"),
+        ("SGP40", seen("sgp_raw"), f"raw {last.get('sgp_raw')}, VOC index {last.get('sgp_voc_index')}",
+         "check wiring; `sudo i2cdetect -y 1` should show 59"),
+        ("DHT22", seen("temp_c"), f"{last.get('temp_c')} C, {last.get('rh')} %RH",
+         "check its data wire and pull-up; DHT22s often fail a few reads, wait 1 min and retry"),
+    ]
+    for name, good, detail, hint in checks:
+        print(f"{name:<19}{'OK   ' if good else 'MISSING'} {detail if good else ''}")
+        if not good:
+            print(f"   {hint}")
+            ok = False
+    pin_file = os.path.join(cfg["device"]["data_dir"], "dht22_pin")
+    if os.path.exists(pin_file):
+        print(f"   (DHT22 detected on GPIO{open(pin_file).read().strip()})")
+    b = store.get("battery")
+    if b and b.get("battery_pct") is not None:
+        print(f"battery ............ {b['battery_pct']:.0f}% via {b.get('source')}"
+              f"{' (charging)' if b.get('charging') else ''}")
+    else:
+        print("battery ............ not detected (no UPS HAT found, or pisugar-server not installed)")
+    mp = cfg["device"]["model_path"]
+    if os.path.exists(mp):
+        import json
+        print(f"model .............. {json.load(open(mp)).get('version')}")
+    else:
+        print("model .............. none yet (collect with `voc-detector guided`, then `voc-detector train`)")
+    print("\nALL GOOD" if ok else "\nSome checks failed - see hints above.")
+    sys.exit(0 if ok else 1)
+
+
 def cmd_status(args, cfg):
     store = Storage(_db(cfg))
     last = list(store.db.execute(
@@ -89,6 +145,82 @@ def cmd_export(args, cfg):
         print(f"wrote {len(labels)} labelled periods to {lp}")
 
 
+def cmd_guided(args, cfg):
+    from . import guided
+    confs = [c.strip() for c in (args.confounders or "").split(",") if c.strip()]
+    guided.run(_db(cfg), rounds=args.rounds, compound_min=args.compound_min,
+               clean_min=args.clean_min, recovery_min=args.recovery_min,
+               baseline_min=args.baseline_min, confounders=confs,
+               confounder_min=args.confounder_min, session=args.session)
+
+
+def cmd_train(args, cfg):
+    """Train on the Pi itself from everything collected with `guided`/`collect`."""
+    try:
+        import pandas  # noqa: F401
+        import sklearn  # noqa: F401
+    except ImportError:
+        sys.exit("Training needs pandas and scikit-learn. Install them once with:\n"
+                 "  sudo apt install -y python3-pandas python3-sklearn")
+    store = Storage(_db(cfg))
+    labels = [lb for lb in store.labels() if lb["end_ts"]]
+    sessions = {lb["session"] for lb in labels if lb["label"] == POSITIVE_LABEL}
+    if not sessions:
+        sys.exit("No labelled compound data yet. Run:  voc-detector guided")
+    if len(sessions) < 3 and not args.force:
+        sys.exit(f"Only {len(sessions)} session(s) with compound data. Collect at least 3 so the "
+                 "model can be tested on a session it never saw (or use --force).")
+
+    work = os.path.join(cfg["device"]["data_dir"], "training")
+    os.makedirs(work, exist_ok=True)
+    readings, labels_csv = os.path.join(work, "readings.csv"), os.path.join(work, "labels.csv")
+    # Only export readings around the labelled periods (keeps it fast on a Pi Zero).
+    windows = sorted((lb["start_ts"] - 900, lb["end_ts"] + 60) for lb in labels)
+    merged = []
+    for a, b in windows:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    cols = ["ts"] + ALL_CHANNELS
+    n = 0
+    with open(readings, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(cols + ["source"])
+        for k, (a, b) in enumerate(merged):
+            for smp in store.iter_samples(a, b):
+                w.writerow([smp[c] for c in cols] + [f"block{k}"])
+                n += 1
+    with open(labels_csv, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["start", "end", "label", "session", "notes"])
+        for lb in labels:
+            w.writerow([lb["start_ts"], lb["end_ts"], lb["label"], lb["session"], lb["notes"]])
+    print(f"exported {n} readings and {len(labels)} labelled periods from "
+          f"{len(sessions)} sessions to {work}")
+
+    pipeline = os.path.join(args.training_dir, "pipeline.py")
+    if not os.path.exists(pipeline):
+        sys.exit(f"training scripts not found at {args.training_dir} (re-run pi/install.sh)")
+    out = os.path.join(work, "model.json")
+    cmd = [sys.executable, pipeline, readings, labels_csv, "-o", out, "--model", args.model,
+           "--max-false-alarms", str(args.max_false_alarms), "--device-export"]
+    print("training (a few minutes on a Pi Zero)...")
+    if subprocess.call(cmd) != 0:
+        sys.exit("training failed (see messages above)")
+    if args.no_install:
+        print(f"model saved to {out} (not installed)")
+        return
+    dest = cfg["device"]["model_path"]
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if os.path.exists(dest):
+        shutil.copy(dest, dest + ".previous")
+    shutil.copy(out, dest)
+    print(f"installed {dest}; restarting the detector...")
+    if subprocess.call(["sudo", "-n", "/usr/bin/systemctl", "restart", "voc-detector"]) != 0:
+        print("could not restart automatically; run:  sudo systemctl restart voc-detector")
+
+
 def _fmt(ts):
     return "-" if ts is None else dt.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -108,6 +240,26 @@ def main(argv=None):
     c.add_argument("-s", "--session", help="session name (default: today's date)")
     c.add_argument("-n", "--notes", default="")
 
+    g = sub.add_parser("guided", help="step-by-step labelled data collection session")
+    g.add_argument("--rounds", type=int, default=4, help="compound exposures (default 4)")
+    g.add_argument("--compound-min", type=float, default=10)
+    g.add_argument("--clean-min", type=float, default=10)
+    g.add_argument("--recovery-min", type=float, default=3)
+    g.add_argument("--baseline-min", type=float, default=10)
+    g.add_argument("--confounders", default="",
+                   help="comma-separated other smells to record, e.g. 'perfume,hand sanitiser'")
+    g.add_argument("--confounder-min", type=float, default=5)
+    g.add_argument("-s", "--session", help="session name (default: date and time)")
+
+    t = sub.add_parser("train", help="train a model on this Pi from the collected sessions")
+    t.add_argument("--model", choices=["logreg", "gbt", "auto"], default="logreg",
+                   help="logreg is fast on a Pi Zero; auto also tries boosted trees (slow)")
+    t.add_argument("--max-false-alarms", type=float, default=0.25)
+    t.add_argument("--training-dir", default="/opt/voc-detector/training")
+    t.add_argument("--no-install", action="store_true", help="train but don't install the model")
+    t.add_argument("--force", action="store_true", help="train even with fewer than 3 sessions")
+
+    sub.add_parser("check", help="health check: service, sensors, battery, model")
     sub.add_parser("status", help="show the latest reading and queue size")
 
     e = sub.add_parser("export", help="export logged samples (+labels) to CSV")
@@ -118,7 +270,8 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = config_mod.load(args.config)
-    {"run": cmd_run, "collect": cmd_collect, "status": cmd_status, "export": cmd_export}[args.cmd](args, cfg)
+    {"run": cmd_run, "guided": cmd_guided, "check": cmd_check, "collect": cmd_collect, "status": cmd_status,
+     "export": cmd_export, "train": cmd_train}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

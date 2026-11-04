@@ -17,8 +17,9 @@ log = logging.getLogger(__name__)
 class SensorHub:
     """Reads all sensors and returns one canonical sample dict."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, cache_dir=None):
         self.cfg = cfg
+        self.cache_dir = cache_dir
         self.ens = self.sgp = self.dht = None
         self._last_env = (None, None)
         self._last_dht_t = 0.0
@@ -58,14 +59,76 @@ class SensorHub:
             log.warning("SGP40 not found: %s", e)
 
         try:
-            import adafruit_dht
-            pin = getattr(board, f"D{int(self.cfg.get('dht22_pin', 4))}")
-            self.dht = adafruit_dht.DHT22(pin, use_pulseio=False)
-            log.info("DHT22 configured on GPIO%s", self.cfg.get("dht22_pin", 4))
+            import adafruit_dht  # noqa: F401
+            self.dht = self._find_dht(board)
         except ImportError:
             log.warning("adafruit_dht not installed")
-        except Exception as e:  # noqa: BLE001 - library raises many types
-            log.warning("DHT22 init failed: %s", e)
+
+    # Pins tried when dht22_pin = "auto" (BCM numbers; 2/3 are I2C, skipped).
+    DHT_CANDIDATES = (4, 17, 27, 22, 18, 23, 24, 25, 5, 6, 12, 13, 16, 26, 19, 20, 21)
+
+    def _find_dht(self, board):
+        """Open the DHT22. With dht22_pin = "auto", probe the usual GPIO pins
+        until one answers, and remember the result so later starts are fast."""
+        import os
+        setting = str(self.cfg.get("dht22_pin", "auto")).strip().lower()
+        cache = os.path.join(self.cache_dir, "dht22_pin") if self.cache_dir else None
+        if setting != "auto":
+            candidates = [int(setting)]
+        else:
+            candidates = list(self.DHT_CANDIDATES)
+            try:
+                with open(cache) as f:
+                    cached = int(f.read().strip())
+                candidates.remove(cached)
+                candidates.insert(0, cached)
+            except (OSError, TypeError, ValueError):
+                pass
+        for pin in candidates:
+            dev = self._open_dht(board, pin)
+            if dev is None:
+                continue
+            if setting != "auto":
+                log.info("DHT22 configured on GPIO%d", pin)
+                return dev
+            if self._dht_answers(dev):
+                log.info("DHT22 found on GPIO%d", pin)
+                if cache:
+                    try:
+                        with open(cache, "w") as f:
+                            f.write(str(pin))
+                    except OSError:
+                        pass
+                return dev
+            try:
+                dev.exit()
+            except Exception:  # noqa: BLE001
+                pass
+        log.warning("DHT22 not found on any GPIO pin (temperature/humidity will be missing)")
+        return None
+
+    @staticmethod
+    def _open_dht(board, pin):
+        import adafruit_dht
+        for pulseio in (True, False):
+            try:
+                return adafruit_dht.DHT22(getattr(board, f"D{pin}"), use_pulseio=pulseio)
+            except Exception:  # noqa: BLE001 - library raises many types
+                continue
+        return None
+
+    @staticmethod
+    def _dht_answers(dev, tries=3):
+        for _ in range(tries):
+            try:
+                if dev.temperature is not None and dev.humidity is not None:
+                    return True
+            except RuntimeError:
+                pass  # checksum / timing errors are normal, retry
+            except Exception:  # noqa: BLE001
+                return False
+            time.sleep(2.2)
+        return False
 
     def status(self):
         return {

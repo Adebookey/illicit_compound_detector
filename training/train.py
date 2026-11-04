@@ -290,9 +290,38 @@ def main(argv=None):
     print(f"model written to {args.out} ({os.path.getsize(args.out) / 1024:.0f} KB), report {rp}")
 
 
+def assess(spec, data, met_target):
+    """Plain-language verdict for non-specialists."""
+    m = spec["metrics"]
+    n_sessions = data.session.astype(str).nunique()
+    confounders = sorted(l for l in set(data.label) if str(l).startswith("confounder"))
+    notes = []
+    if n_sessions < 3:
+        head = "NOT ENOUGH DATA TO JUDGE - collect more sessions"
+        notes.append(f"Only {n_sessions} session(s). The scores below are optimistic.")
+    elif m["roc_auc"] >= 0.95 and m["recall"] >= 0.9 and met_target:
+        head = "GOOD ENOUGH FOR A PILOT / DEMO"
+    elif m["roc_auc"] >= 0.85 and m["recall"] >= 0.7:
+        head = "PROMISING - needs more data before giving it to the client"
+    else:
+        head = "NOT RELIABLE YET - collect more (and more varied) data"
+    if not confounders:
+        notes.append("No other smells (perfume, sanitiser, cooking...) were recorded, so the "
+                     "model has only learned 'compound vs. clean air'. Expect false alarms from "
+                     "other strong smells until confounders are collected "
+                     "(voc-detector guided --confounders \"perfume,hand sanitiser\").")
+    if m["compound_periods"] < 10:
+        notes.append(f"Only {m['compound_periods']} compound exposures were tested; "
+                     "aim for 12+ across several days.")
+    return [head] + notes
+
+
 def render_report(spec, scores, per_label, met_target, max_fa, grid, data):
     m = spec["metrics"]
-    lines = [f"# Model report {spec['version']}", "",
+    verdict = assess(spec, data, met_target)
+    lines = [f"# Model report {spec['version']}", "", f"**Verdict: {verdict[0]}**", ""]
+    lines += [f"- {v}" for v in verdict[1:]]
+    lines += ["",
              f"- Model: **{m['model']}** using {len(spec['features'])} features",
              f"- Validation: held out one {m['validation']} at a time "
              f"({len(set(data.session))} sessions)",

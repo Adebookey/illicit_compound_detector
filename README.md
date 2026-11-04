@@ -26,6 +26,19 @@ Report those numbers honestly to the client.
 
 ## Guide
 
+**Start here: [docs/00-fresh-start.md](docs/00-fresh-start.md)**. Flash a new SD card, install
+with one command, record guided sessions and train on the Pi itself. No laptop
+tools needed.
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Adebookey/illicit_compound_detector/main/pi/bootstrap.sh | sudo bash
+voc-detector check      # sensors OK?
+voc-detector guided     # labelled collection session (3+ times)
+voc-detector train      # train + install the model on the Pi
+```
+
+Reference docs (for the old SD card, laptop training and the dashboard):
+
 | Step | Doc |
 |---|---|
 | 1. Back up the SD card, SSH into the Pi, find the engineer's code and data | [docs/01-accessing-the-pi.md](docs/01-accessing-the-pi.md) |
@@ -45,14 +58,16 @@ src/voc_detector/      runs on the Pi (pure Python inference, no numpy needed)
   battery.py           PiSugar / INA219 UPS HAT, auto-detected
   storage.py           local SQLite log + offline upload queue
   uploader.py          sends to Supabase
-  agent.py, cli.py     main loop; `voc-detector run|collect|status|export`
+  guided.py            step-by-step labelled data collection
+  agent.py, cli.py     main loop; `voc-detector run|check|guided|train|status|export`
 training/              runs on a laptop
   import_data.py       converts the engineer's logs (CSV/JSON/SQLite) to a standard CSV
   label.py             applies your written-down times
   plot_session.py      visual check of labels vs. sensor response
   train.py             trains, validates per day, tunes alarm thresholds, exports model.json
+  pipeline.py          import + label + train in one command
   make_synthetic.py    fake data for testing the pipeline only
-pi/                    install.sh, systemd service, config example, inventory.sh
+pi/                    bootstrap.sh (one-line setup), install.sh, systemd service, config, inventory.sh
 dashboard/             Supabase SQL + static web dashboard
 tests/                 pytest suite (runs without hardware)
 ```

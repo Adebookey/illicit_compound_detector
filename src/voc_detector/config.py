@@ -17,7 +17,7 @@ DEFAULTS = {
         "sample_interval_s": 1.0,
         "keep_days": 60,
     },
-    "sensors": {"dht22_pin": 4, "simulate": False},
+    "sensors": {"dht22_pin": "auto", "simulate": False},
     "battery": {"type": "auto", "cells": 1, "low_pct": 20, "shutdown_pct": 5,
                 "auto_shutdown": True},
     "alarm": {"gpio_pin": 0},
