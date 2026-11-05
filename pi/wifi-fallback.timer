@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Wi-Fi every 2 minutes and open the setup hotspot if offline
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

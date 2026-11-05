@@ -8,12 +8,11 @@ overwrite it.** It still holds the engineer's code and data.
 ## 1. Flash the card (15 min, on your laptop)
 
 1. Install **Raspberry Pi Imager** from raspberrypi.com/software and open it.
-2. **Choose Device**: the model printed on the board.
-   - *Raspberry Pi Zero 2 W*, or
-   - *Raspberry Pi Zero / Zero W*. A plain "Zero" without a **W** has no Wi-Fi.
-     If that's what you have, tell me before going further.
-3. **Choose OS** → *Raspberry Pi OS (other)* → **Raspberry Pi OS Lite (32-bit)**.
-   Lite has no desktop, fits easily on 8 GB and runs better on a Pi Zero.
+2. **Choose Device**: **Raspberry Pi Zero 2 W**.
+3. **Choose OS** → *Raspberry Pi OS (other)* → **Raspberry Pi OS Lite (64-bit)**.
+   Lite has no desktop and fits easily on 8 GB. (The code also runs on 32-bit;
+   64-bit is what Raspberry Pi recommends for the Zero 2 W and has better
+   package support.)
 4. **Choose Storage**: your SD card (double-check it is not the old card!).
 5. **Next → Edit settings** (OS customisation). This is where you create the
    credentials. Nothing is pre-set; you choose them:
@@ -99,11 +98,16 @@ prints. Detection now runs on its own whenever the Pi is on.
 Test it: bring the compound close. Within about 10-30 s
 `journalctl -u voc-detector -f` should show `DETECTION START`.
 
+At the end the installer prints the **setup hotspot name and password**.
+Write them on a sticker on the device (see [06-handover.md](06-handover.md)).
+
 ## Later
 
 - **More data = better model.** Run more `guided` sessions any time, then
   `voc-detector train` again. The previous model is kept as `model.json.previous`.
 - **Updates**: run the same `curl ... | sudo bash` command again.
+- **Handing it to the client** (their Wi-Fi + your remote access):
+  [06-handover.md](06-handover.md)
 - **Remote dashboard**: once the Supabase project exists, follow
   [05-dashboard.md](05-dashboard.md) and put the keys in
   `/etc/voc-detector/config.toml` (`sudo nano /etc/voc-detector/config.toml`).

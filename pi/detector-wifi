@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Manage the Wi-Fi networks the detector knows. The Pi joins whichever known
+# network is in range (highest priority first), so you can add the client's
+# Wi-Fi BEFORE handing the device over, while keeping your own.
+#
+#   sudo detector-wifi list
+#   sudo detector-wifi add "Client WiFi" 'their-password' [priority]
+#   sudo detector-wifi add "My Phone Hotspot" 'password' 5
+#   sudo detector-wifi remove "Old WiFi"
+#   sudo detector-wifi hotspot-info        # the fallback setup hotspot's name/password
+set -euo pipefail
+cmd="${1:-list}"
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
+command -v nmcli >/dev/null || { echo "NetworkManager (nmcli) not found"; exit 1; }
+
+case "$cmd" in
+  list)
+    echo "Known networks (higher priority is tried first):"
+    nmcli -t -f NAME,TYPE,AUTOCONNECT-PRIORITY connection show | awk -F: '$2=="802-11-wireless"{printf "  %-32s priority %s\n", $1, $3}'
+    echo; echo "Connected now:"; nmcli -t -f DEVICE,STATE,CONNECTION device | grep '^wlan0' || true
+    ;;
+  add)
+    ssid="${2:?usage: detector-wifi add SSID PASSWORD [priority]}"
+    pass="${3:-}"
+    prio="${4:-10}"
+    nmcli connection delete "$ssid" >/dev/null 2>&1 || true
+    if [ -n "$pass" ]; then
+      nmcli connection add type wifi ifname wlan0 con-name "$ssid" ssid "$ssid" \
+        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$pass" \
+        connection.autoconnect yes connection.autoconnect-priority "$prio" >/dev/null
+    else
+      nmcli connection add type wifi ifname wlan0 con-name "$ssid" ssid "$ssid" \
+        connection.autoconnect yes connection.autoconnect-priority "$prio" >/dev/null
+    fi
+    echo "Saved '$ssid' (priority $prio). The Pi will join it automatically when it is in range."
+    echo "Your current connection is not changed."
+    ;;
+  remove)
+    nmcli connection delete "${2:?usage: detector-wifi remove SSID}"
+    ;;
+  hotspot-info)
+    echo "If the Pi can't join any known Wi-Fi for ~3 minutes, it opens its own hotspot:"
+    echo "  Wi-Fi name: $(cat /etc/voc-detector/hotspot-ssid 2>/dev/null || echo detector-setup)"
+    echo "  Password:   $(cat /etc/voc-detector/hotspot-password 2>/dev/null || echo '(not installed)')"
+    echo "  Then:       ssh $(logname 2>/dev/null || echo USER)@10.42.0.1   and run: sudo detector-wifi add ..."
+    ;;
+  *)
+    sed -n 2,12p "$0"; exit 1 ;;
+esac

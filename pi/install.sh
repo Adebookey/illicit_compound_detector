@@ -54,10 +54,24 @@ EOF
 chmod 440 /etc/sudoers.d/voc-detector
 rm -f /etc/sudoers.d/voc-detector-shutdown
 
+step "Wi-Fi tools and fallback setup hotspot"
+install -m 755 "$REPO/pi/detector-wifi" /usr/local/bin/detector-wifi
+mkdir -p /usr/local/lib/voc-detector
+install -m 755 "$REPO/pi/wifi-fallback.sh" /usr/local/lib/voc-detector/wifi-fallback.sh
+[ -f "$CONF/hotspot-ssid" ] || echo "$(hostname)-setup" > "$CONF/hotspot-ssid"
+[ -f "$CONF/hotspot-password" ] || (tr -dc 'a-km-z2-9' </dev/urandom | head -c 10; echo) > "$CONF/hotspot-password"
+chmod 600 "$CONF/hotspot-password"
+cp "$REPO/pi/wifi-fallback.service" "$REPO/pi/wifi-fallback.timer" /etc/systemd/system/
+
+step "Raspberry Pi Connect (remote shell from anywhere)"
+apt_try rpi-connect-lite
+loginctl enable-linger "$SVC_USER" 2>/dev/null || true   # keep Connect running without a login
+
 sed "s/__USER__/$SVC_USER/" "$REPO/pi/voc-detector.service" > /etc/systemd/system/voc-detector.service
 ln -sf "$APP/venv/bin/voc-detector" /usr/local/bin/voc-detector
 systemctl daemon-reload
 systemctl enable voc-detector >/dev/null 2>&1
+systemctl enable --now wifi-fallback.timer >/dev/null 2>&1 || true
 systemctl restart voc-detector
 
 step "Checking sensors"
@@ -72,6 +86,12 @@ else
 fi
 
 cat <<EOF
+
+WRITE THIS DOWN - setup hotspot (opens by itself if the Pi can't reach any known Wi-Fi):
+  Wi-Fi name: $(cat "$CONF/hotspot-ssid")    password: $(cat "$CONF/hotspot-password")
+  then: ssh $SVC_USER@10.42.0.1
+
+Remote access from anywhere (one time):  rpi-connect on && rpi-connect signin
 
 Installed. Next steps:
   voc-detector check                      # are all sensors working?

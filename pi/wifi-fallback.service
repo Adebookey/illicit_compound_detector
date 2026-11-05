@@ -1,0 +1,7 @@
+[Unit]
+Description=Open a setup hotspot when no known Wi-Fi is reachable
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/voc-detector/wifi-fallback.sh
