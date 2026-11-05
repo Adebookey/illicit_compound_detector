@@ -38,6 +38,11 @@ Type `yes` to the fingerprint question, then your password. If
 `detector.local` isn't found, get the Pi's IP address from your router's
 "connected devices" page (or the Fing phone app) and use `ssh admin@192.168.x.x`.
 
+> **Raspberry Pi Connect instead of SSH?** Everything below works the same in
+> the Connect remote shell (connect.raspberrypi.com). Use `tmux` there too:
+> if the browser tab closes, the install keeps running and `tmux attach -t install`
+> brings it back.
+
 ## 3. Install everything with one command (20-40 min, unattended)
 
 > If you ever see `dpkg was interrupted, you must manually run 'sudo dpkg --configure -a'`,
