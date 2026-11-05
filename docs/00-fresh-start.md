@@ -40,7 +40,19 @@ Type `yes` to the fingerprint question, then your password. If
 
 ## 3. Install everything with one command (20-40 min, unattended)
 
-In the SSH window:
+> If you ever see `dpkg was interrupted, you must manually run 'sudo dpkg --configure -a'`,
+> an earlier install was cut off. Run `sudo dpkg --configure -a`, wait for it to
+> finish, then run the install command again.
+
+In the SSH window, first start `tmux` so a dropped connection can't interrupt
+the install (if you get disconnected, log in again and run `tmux attach -t install`):
+
+```bash
+sudo apt install -y tmux
+tmux new -s install
+```
+
+Then:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/Adebookey/illicit_compound_detector/main/pi/bootstrap.sh | sudo bash

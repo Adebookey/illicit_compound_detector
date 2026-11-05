@@ -8,7 +8,24 @@ U="${SUDO_USER:-$(logname 2>/dev/null || echo pi)}"
 DIR="$(getent passwd "$U" | cut -d: -f6)/illicit_compound_detector"
 
 if [ "$(id -u)" -ne 0 ]; then echo "run with sudo (see the command above)"; exit 1; fi
-command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git >/dev/null; }
+in_tmux() {  # sudo hides $TMUX, so look for a tmux ancestor process instead
+  local pid=$$
+  while [ "${pid:-1}" -gt 1 ]; do
+    case "$(ps -o comm= -p "$pid" 2>/dev/null)" in tmux*) return 0 ;; esac
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  done
+  return 1
+}
+if ! in_tmux; then
+  echo "TIP: run this inside 'tmux' so a dropped SSH connection can't interrupt the install."
+  echo "     (Ctrl+C now, then: sudo apt install -y tmux && tmux new -s install)  - continuing in 10 s..."
+  sleep 10
+fi
+if ! command -v git >/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  dpkg --configure -a
+  apt-get update -qq && apt-get install -y -qq git
+fi
 if [ -d "$DIR/.git" ]; then
   echo ">> updating $DIR"
   sudo -u "$U" git -C "$DIR" pull --ff-only

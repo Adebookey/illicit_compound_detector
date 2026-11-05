@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install / update the detector on a Raspberry Pi (Zero / Zero W / Zero 2 W)
-# running a fresh Raspberry Pi OS Lite. Normally run through bootstrap.sh:
+# running a fresh Raspberry Pi OS Lite. Run it inside `tmux` so a dropped SSH
+# connection can't interrupt it. Normally run through bootstrap.sh:
 #   curl -sSL https://raw.githubusercontent.com/Adebookey/illicit_compound_detector/main/pi/bootstrap.sh | sudo bash
 # or from a checkout:   sudo bash pi/install.sh
 set -uo pipefail
@@ -18,10 +19,22 @@ step "Enabling I2C"
 raspi-config nonint do_i2c 0 || true
 modprobe i2c-dev 2>/dev/null || true
 
+export DEBIAN_FRONTEND=noninteractive
+step "Preparing the package manager"
+# A fresh Pi often runs automatic updates in the background for the first
+# minutes after boot; wait for them instead of failing on the lock.
+for i in $(seq 1 60); do
+  pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null || break
+  [ "$i" -eq 1 ] && echo "   waiting for background updates to finish (can take a few minutes)..."
+  sleep 10
+done
+# Finish any install that was interrupted earlier (e.g. a dropped SSH session).
+dpkg --configure -a || { echo "dpkg repair failed - run 'sudo dpkg --configure -a' and read its error"; exit 1; }
+
 step "Installing system packages (5-15 minutes on a Pi Zero)"
-apt-get update -qq
-apt-get install -y -qq git python3-venv python3-pip python3-dev i2c-tools >/dev/null || {
-  echo "apt-get failed - check the internet connection and run again"; exit 1; }
+apt-get update -qq || { echo "apt-get update failed - is the Pi online? try: ping -c3 deb.debian.org"; exit 1; }
+apt-get install -y -qq git python3-venv python3-pip python3-dev i2c-tools || {
+  echo "installing system packages failed (see the error above)"; exit 1; }
 apt_try python3-lgpio python3-rpi-lgpio libgpiod2 python3-libgpiod
 step "Installing training libraries (pandas, scikit-learn) so you can train on the Pi"
 apt_try python3-numpy python3-pandas python3-sklearn
