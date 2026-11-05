@@ -39,33 +39,34 @@ Type `yes` to the fingerprint question, then your password. If
 "connected devices" page (or the Fing phone app) and use `ssh admin@192.168.x.x`.
 
 > **Raspberry Pi Connect instead of SSH?** Everything below works the same in
-> the Connect remote shell (connect.raspberrypi.com). Use `tmux` there too:
-> if the browser tab closes, the install keeps running and `tmux attach -t install`
-> brings it back.
+> the Connect remote shell (connect.raspberrypi.com).
 
 ## 3. Install everything with one command (20-40 min, unattended)
 
-> If you ever see `dpkg was interrupted, you must manually run 'sudo dpkg --configure -a'`,
-> an earlier install was cut off. Run `sudo dpkg --configure -a`, wait for it to
-> finish, then run the install command again.
-
-In the SSH window, first start `tmux` so a dropped connection can't interrupt
-the install (if you get disconnected, log in again and run `tmux attach -t install`):
-
-```bash
-sudo apt install -y tmux
-tmux new -s install
-```
-
-Then:
+In the SSH or Connect window:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/Adebookey/illicit_compound_detector/main/pi/bootstrap.sh | sudo bash
 ```
 
+The install runs as a **background job on the Pi**, and the window just shows
+its progress. If the window closes or the connection drops (installing system
+packages can restart Raspberry Pi Connect), the install keeps going. Reconnect
+and watch it again with:
+
+```bash
+sudo journalctl -u detector-install -f
+```
+
+(Ctrl+C stops watching, not the install.) It also repairs an earlier
+install that was cut off (the `dpkg was interrupted` error), so you don't need
+to run `sudo dpkg --configure -a` yourself.
+
 It downloads the code, installs it, finds the sensors (including which pin
-the DHT22 is on) and starts logging. At the end it prints a sensor check. If
-it says to reboot, do `sudo reboot`, log in again after a minute, and run:
+the DHT22 is on) and starts logging. At the end it prints a sensor check and
+the **setup hotspot name and password** (write them down; see
+[06-handover.md](06-handover.md)). If it says to reboot, do `sudo reboot`,
+reconnect after a minute, and run:
 
 ```bash
 voc-detector check
@@ -114,9 +115,6 @@ prints. Detection now runs on its own whenever the Pi is on.
 
 Test it: bring the compound close. Within about 10-30 s
 `journalctl -u voc-detector -f` should show `DETECTION START`.
-
-At the end the installer prints the **setup hotspot name and password**.
-Write them on a sticker on the device (see [06-handover.md](06-handover.md)).
 
 ## Later
 

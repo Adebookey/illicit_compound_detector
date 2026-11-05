@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install / update the detector on a Raspberry Pi (Zero / Zero W / Zero 2 W)
-# running a fresh Raspberry Pi OS Lite. Run it inside `tmux` so a dropped SSH
-# connection can't interrupt it. Normally run through bootstrap.sh:
+# running a fresh Raspberry Pi OS Lite. Normally run through bootstrap.sh, which
+# runs it as a background job so a closed SSH/Connect window can't interrupt it:
 #   curl -sSL https://raw.githubusercontent.com/Adebookey/illicit_compound_detector/main/pi/bootstrap.sh | sudo bash
 # or from a checkout:   sudo bash pi/install.sh
 set -uo pipefail
@@ -29,7 +29,7 @@ for i in $(seq 1 60); do
   sleep 10
 done
 # Finish any install that was interrupted earlier (e.g. a dropped SSH session).
-dpkg --configure -a || { echo "dpkg repair failed - run 'sudo dpkg --configure -a' and read its error"; exit 1; }
+dpkg --force-confdef --force-confold --configure -a || { echo "dpkg repair failed - run 'sudo dpkg --configure -a' and read its error"; exit 1; }
 
 step "Installing system packages (5-15 minutes on a Pi Zero)"
 apt-get update -qq || { echo "apt-get update failed - is the Pi online? try: ping -c3 deb.debian.org"; exit 1; }
