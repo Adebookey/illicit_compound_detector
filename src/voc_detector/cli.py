@@ -70,7 +70,12 @@ def cmd_check(args, cfg):
     if not rows:
         print("readings ........... NONE in the last 30 s (service starting, or crashed: see journalctl)")
         sys.exit(1)
-    print(f"readings ........... {len(rows)} in the last 30 s")
+    st = store.get("sensor_status") or {}
+    slow = len(rows) < 24
+    print(f"readings ........... {len(rows)} in the last 30 s"
+          f"{'  (expected ~30: sampling is slow)' if slow else ''}")
+    if slow and st.get("read_seconds"):
+        print("   time per reading: " + ", ".join(f"{k} {v:.2f} s" for k, v in st["read_seconds"].items()))
 
     def seen(*cols):
         return any(r.get(c) is not None for r in rows for c in cols)
@@ -88,6 +93,8 @@ def cmd_check(args, cfg):
         if not good:
             print(f"   {hint}")
             ok = False
+    if st.get("ens160_state") and st["ens160_state"] != "normal":
+        print(f"   ENS160 state: {st['ens160_state']} - readings are not reliable until 'normal'")
     pin_file = os.path.join(cfg["device"]["data_dir"], "dht22_pin")
     if os.path.exists(pin_file):
         print(f"   (DHT22 detected on GPIO{open(pin_file).read().strip()})")

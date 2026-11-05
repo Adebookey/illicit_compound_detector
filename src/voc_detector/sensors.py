@@ -14,6 +14,11 @@ import time
 log = logging.getLogger(__name__)
 
 
+# ENS160 STATUS register "validity" field
+_ENS_VALIDITY = {0: "normal", 1: "warm-up (~3 min after power on)",
+                 2: "initial start-up (first ~1 h of its life)", 3: "invalid output"}
+
+
 class SensorHub:
     """Reads all sensors and returns one canonical sample dict."""
 
@@ -24,6 +29,10 @@ class SensorHub:
         self._last_env = (None, None)
         self._last_dht_t = 0.0
         self._errors = {"ens160": 0, "sgp40": 0, "dht22": 0}
+        self._ens_comp = None
+        self._voc_algo = None
+        self.ens_validity = None
+        self.timings = {}
         self._init()
 
     # ------------------------------------------------------------------
@@ -136,12 +145,16 @@ class SensorHub:
             "sgp40": self.sgp is not None,
             "dht22": self.dht is not None,
             "errors": dict(self._errors),
+            "ens160_state": self.ens_validity,
+            "read_seconds": dict(self.timings),
         }
 
     # ------------------------------------------------------------------
     def read(self):
         now = time.time()
+        t0 = time.monotonic()
         temp, rh = self._read_dht(now)
+        t_dht = time.monotonic()
         s = {"ts": now, "temp_c": temp, "rh": rh}
         comp_t = temp if temp is not None else 25.0
         comp_rh = rh if rh is not None else 50.0
@@ -152,8 +165,16 @@ class SensorHub:
 
         if self.ens is not None:
             try:
-                self.ens.temperature_compensation = comp_t
-                self.ens.humidity_compensation = comp_rh
+                # Only write compensation when it changes (saves I2C traffic).
+                comp = (round(comp_t, 1), round(comp_rh, 1))
+                if comp != self._ens_comp:
+                    self.ens.temperature_compensation = comp_t
+                    self.ens.humidity_compensation = comp_rh
+                    self._ens_comp = comp
+                # The Adafruit driver only refreshes its buffered values when
+                # new_data_available is read (it copies new data in as a side
+                # effect). The sensor produces new data about once a second.
+                self.ens.new_data_available
                 data = self.ens.read_all_sensors()
                 s["ens_aqi"] = data.get("AQI")
                 s["ens_tvoc"] = data.get("TVOC")
@@ -162,20 +183,31 @@ class SensorHub:
                 if len(res) >= 3:
                     s["ens_hp0_rs"] = res[0]
                     s["ens_hp2_rs"] = res[2]
+                self.ens_validity = _ENS_VALIDITY.get(self.ens.data_validity, "unknown")
             except Exception as e:  # noqa: BLE001
                 self._errors["ens160"] += 1
                 log.debug("ENS160 read failed: %s", e)
+        t_ens = time.monotonic()
 
         if self.sgp is not None:
             try:
-                # measure_index runs Sensirion's VOC algorithm and must be
-                # called about once per second to stay calibrated.
-                s["sgp_voc_index"] = self.sgp.measure_index(temperature=comp_t,
-                                                             relative_humidity=comp_rh)
-                s["sgp_raw"] = self.sgp.raw
+                # ONE compensated measurement (the driver waits ~0.5 s per
+                # measurement), fed into Sensirion's VOC algorithm ourselves.
+                # The algorithm expects to be called about once per second.
+                raw = self.sgp.measure_raw(temperature=comp_t, relative_humidity=comp_rh)
+                if raw is not None and raw >= 0:
+                    s["sgp_raw"] = raw
+                    if self._voc_algo is None:
+                        from adafruit_sgp40.voc_algorithm import VOCAlgorithm
+                        self._voc_algo = VOCAlgorithm()
+                        self._voc_algo.vocalgorithm_init()
+                    s["sgp_voc_index"] = self._voc_algo.vocalgorithm_process(raw)
             except Exception as e:  # noqa: BLE001
                 self._errors["sgp40"] += 1
                 log.debug("SGP40 read failed: %s", e)
+        t_sgp = time.monotonic()
+        self.timings = {"dht22": round(t_dht - t0, 3), "ens160": round(t_ens - t_dht, 3),
+                        "sgp40": round(t_sgp - t_ens, 3)}
         return s
 
     def _read_dht(self, now):

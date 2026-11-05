@@ -155,6 +155,7 @@ class Agent:
         self._last_battery = b
         try:
             self.store.put("battery", {**b, "source": self.battery.kind, "ts": time.time()})
+            self.store.put("sensor_status", {**self.hub.status(), "ts": time.time()})
         except Exception:  # noqa: BLE001
             pass
         self._check_battery(b)
