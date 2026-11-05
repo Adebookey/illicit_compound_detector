@@ -66,17 +66,22 @@ def cmd_check(args, cfg):
         print("no data yet - wait a minute and run again")
         sys.exit(1)
     store = Storage(_db(cfg))
-    rows = list(store.iter_samples(time.time() - 30))
-    if not rows:
-        print("readings ........... NONE in the last 30 s (service starting, or crashed: see journalctl)")
+    newest = store.db.execute("SELECT MAX(ts) FROM samples").fetchone()[0]
+    if newest is None or time.time() - newest > 30:
+        print("readings ........... NONE recently (service starting, or crashed: see "
+              "journalctl -u voc-detector -n 50)")
         sys.exit(1)
+    # Rate over the last minute of saved data (saved every few seconds).
+    rows = list(store.iter_samples(newest - 60, newest))
+    span = rows[-1]["ts"] - rows[0]["ts"] if len(rows) > 1 else 0
+    rate = (len(rows) - 1) / span if span > 0 else 0
     st = store.get("sensor_status") or {}
-    slow = len(rows) < 24
-    print(f"readings ........... {len(rows)} in the last 30 s"
-          f"{'  (expected ~30: sampling is slow)' if slow else ''}")
+    slow = span >= 20 and rate < 0.8
+    print(f"readings ........... {rate:.1f} per second"
+          f"{'  (expected ~1.0: sampling is slow)' if slow else ''}")
     if slow and st.get("read_seconds"):
         print("   time per reading: " + ", ".join(f"{k} {v:.2f} s" for k, v in st["read_seconds"].items()))
-
+    rows = [r for r in rows if r["ts"] > newest - 30]
     def seen(*cols):
         return any(r.get(c) is not None for r in rows for c in cols)
     last = rows[-1]

@@ -42,6 +42,7 @@ class Storage:
         self.db.executescript(_SCHEMA)
         self.db.commit()
         self._pending = 0
+        self._last_commit = time.time()
 
     # samples ------------------------------------------------------------
     def add_sample(self, s, prob=None, score=None, active=None):
@@ -52,12 +53,15 @@ class Storage:
             f"INSERT OR REPLACE INTO samples ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
             vals)
         self._pending += 1
-        if self._pending >= 30:  # batch commits to spare the SD card
+        # Batch commits to spare the SD card, but keep the data on disk (and
+        # visible to `check` / `guided`) within a few seconds.
+        if time.time() - self._last_commit >= 3.0:
             self.commit()
 
     def commit(self):
         self.db.commit()
         self._pending = 0
+        self._last_commit = time.time()
 
     def prune(self, keep_days):
         self.db.execute("DELETE FROM samples WHERE ts < ?", (time.time() - keep_days * 86400,))
