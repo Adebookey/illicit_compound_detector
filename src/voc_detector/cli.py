@@ -184,6 +184,31 @@ def cmd_sessions(args, cfg):
           "  voc-detector train --only NAME1,NAME2,NAME3")
 
 
+def cmd_evidence(args, cfg):
+    from . import evidence
+    only = {x.strip() for x in (args.only or "").split(",") if x.strip()} or None
+    out = os.path.expanduser(args.out)
+    report, data, _ = evidence.build(_db(cfg), out, cfg["device"]["data_dir"], only)
+    print(f"report:   {report}\nraw data: {data}")
+    print("\nTo view it on a laptop/phone on the same Wi-Fi, run:  voc-detector demo")
+    print("then open the address it prints and add /report  (print to PDF from the browser).")
+
+
+def cmd_demo(args, cfg):
+    from . import demo, evidence
+    out = os.path.expanduser(args.evidence_dir)
+    try:
+        evidence.build(_db(cfg), out, cfg["device"]["data_dir"])
+    except SystemExit:
+        pass  # no labelled data yet: live page still works
+    demo.serve(_db(cfg), out, args.port)
+
+
+def cmd_watch(args, cfg):
+    from . import demo
+    demo.watch(_db(cfg))
+
+
 def cmd_review(args, cfg):
     from . import review
     review.run(_db(cfg), args.session)
@@ -319,6 +344,16 @@ def main(argv=None):
 
     sub.add_parser("sessions", help="list recorded sessions")
 
+    ev = sub.add_parser("evidence", help="results report (HTML) + raw data (CSV) from recorded sessions")
+    ev.add_argument("--out", default="~/evidence")
+    ev.add_argument("--only", help="comma-separated session names to include (default: all)")
+
+    dm = sub.add_parser("demo", help="live readings web page for a demonstration (+ the report)")
+    dm.add_argument("--port", type=int, default=8000)
+    dm.add_argument("--evidence-dir", default="~/evidence")
+
+    sub.add_parser("watch", help="live readings in the terminal")
+
     rv = sub.add_parser("review", help="how much each sensor reacted in each recorded period")
     rv.add_argument("-s", "--session", help="only this session")
 
@@ -335,7 +370,7 @@ def main(argv=None):
     cfg = config_mod.load(args.config)
     {"run": cmd_run, "guided": cmd_guided, "check": cmd_check, "collect": cmd_collect, "status": cmd_status,
      "export": cmd_export, "train": cmd_train, "review": cmd_review,
-     "sessions": cmd_sessions}[args.cmd](args, cfg)
+     "sessions": cmd_sessions, "evidence": cmd_evidence, "demo": cmd_demo, "watch": cmd_watch}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

@@ -35,7 +35,12 @@ curl -sSL https://raw.githubusercontent.com/Adebookey/illicit_compound_detector/
 voc-detector check      # sensors OK?
 voc-detector guided     # labelled collection session (3+ times)
 voc-detector train      # train + install the model on the Pi
+voc-detector review     # how much each sensor reacted, per period
+voc-detector evidence   # results report (HTML) + raw data (CSV)
+voc-detector demo       # live readings web page for a demonstration
 ```
+
+Showing results to the client: [docs/07-client-demo.md](docs/07-client-demo.md).
 
 Reference docs (for the old SD card, laptop training and the dashboard):
 
