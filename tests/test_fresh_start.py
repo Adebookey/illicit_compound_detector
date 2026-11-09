@@ -196,3 +196,14 @@ def test_demo_server_live_and_marks(tmp_path):
     labs = Storage(db).labels()
     assert labs[-1]["label"] == "confounder:perfume" and labs[-1]["end_ts"]
     assert "Live sensor readings" in urllib.request.urlopen("http://127.0.0.1:8799/").read().decode()
+
+
+def test_evidence_skips_demo_sessions(tmp_path):
+    import realistic
+    from voc_detector import evidence
+    db = str(tmp_path / "voc.sqlite")
+    st = Storage(db)
+    realistic.make(st)
+    lid = st.start_label("compound", "DEMO-20261110-0900", "live demo: compound")
+    st.end_label(lid)
+    assert all(not p["session"].startswith("DEMO-") for p in evidence.collect(st))

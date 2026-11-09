@@ -188,7 +188,7 @@ def cmd_evidence(args, cfg):
     from . import evidence
     only = {x.strip() for x in (args.only or "").split(",") if x.strip()} or None
     out = os.path.expanduser(args.out)
-    report, data, _ = evidence.build(_db(cfg), out, cfg["device"]["data_dir"], only)
+    report, data, _ = evidence.build(_db(cfg), out, cfg["device"]["data_dir"], only, args.include_demo)
     print(f"report:   {report}\nraw data: {data}")
     print("\nTo view it on a laptop/phone on the same Wi-Fi, run:  voc-detector demo")
     print("then open the address it prints and add /report  (print to PDF from the browser).")
@@ -347,6 +347,8 @@ def main(argv=None):
     ev = sub.add_parser("evidence", help="results report (HTML) + raw data (CSV) from recorded sessions")
     ev.add_argument("--out", default="~/evidence")
     ev.add_argument("--only", help="comma-separated session names to include (default: all)")
+    ev.add_argument("--include-demo", action="store_true",
+                    help="also include live-demo (DEMO-...) sessions")
 
     dm = sub.add_parser("demo", help="live readings web page for a demonstration (+ the report)")
     dm.add_argument("--port", type=int, default=8000)

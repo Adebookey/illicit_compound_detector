@@ -80,10 +80,13 @@ def period_stats(store, lb):
     return out
 
 
-def collect(store, sessions=None):
+def collect(store, sessions=None, include_demo=False):
     labels = [lb for lb in store.labels() if lb["end_ts"]]
     if sessions:
         labels = [lb for lb in labels if lb["session"] in sessions]
+    elif not include_demo:
+        # live demos/practice runs are not controlled trials: leave them out
+        labels = [lb for lb in labels if not str(lb["session"]).startswith("DEMO-")]
     periods, prev = [], {}
     for lb in sorted(labels, key=lambda x: x["start_ts"]):
         after_smell = prev.get(lb["session"], "") .startswith("confounder")
@@ -234,9 +237,9 @@ def _model_metrics(data_dir):
     return None
 
 
-def build(db_path, out_dir, data_dir, sessions=None):
+def build(db_path, out_dir, data_dir, sessions=None, include_demo=False):
     store = Storage(db_path)
-    periods = collect(store, sessions)
+    periods = collect(store, sessions, include_demo)
     if not periods:
         raise SystemExit("No labelled periods recorded yet (run `voc-detector guided` first).")
     os.makedirs(out_dir, exist_ok=True)
