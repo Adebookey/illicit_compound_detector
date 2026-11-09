@@ -52,7 +52,7 @@ def test_train_on_device_from_guided_sessions(tmp_path, capsys):
     cfg = _cfg(tmp_path)
     _simulate_guided_sessions(Storage(cli._db(cfg)))
     args = cli.argparse.Namespace(model="logreg", max_false_alarms=0.25, no_install=False, force=False,
-                                  install_anyway=False, training_dir=os.path.join(ROOT, "training"))
+                                  install_anyway=False, only=None, skip=None, training_dir=os.path.join(ROOT, "training"))
     cli.cmd_train(args, cfg)
     spec = json.load(open(cfg["device"]["model_path"]))
     assert spec["metrics"]["validation"] == "session"
@@ -65,7 +65,7 @@ def test_train_refuses_with_too_few_sessions(tmp_path):
     cfg = _cfg(tmp_path)
     _simulate_guided_sessions(Storage(cli._db(cfg)), n_sessions=1)
     args = cli.argparse.Namespace(model="logreg", max_false_alarms=0.25, no_install=True, force=False,
-                                  training_dir=os.path.join(ROOT, "training"))
+                                  only=None, skip=None, training_dir=os.path.join(ROOT, "training"))
     try:
         cli.cmd_train(args, cfg)
         raise AssertionError("should have refused")
@@ -122,7 +122,39 @@ def test_train_does_not_install_a_failing_model(tmp_path, capsys):
                      "ens_hp0_rs=120000, ens_hp2_rs=40000, sgp_raw=30000, sgp_voc_index=100")
     store.commit()
     args = cli.argparse.Namespace(model="logreg", max_false_alarms=0.25, no_install=False, force=False,
-                                  install_anyway=False, training_dir=os.path.join(ROOT, "training"))
+                                  install_anyway=False, only=None, skip=None, training_dir=os.path.join(ROOT, "training"))
     cli.cmd_train(args, cfg)
     assert not os.path.exists(cfg["device"]["model_path"])
     assert "NOT INSTALLED" in capsys.readouterr().out
+
+
+def test_guided_box_setup_and_session_filter(tmp_path, monkeypatch, capsys):
+    db = str(tmp_path / "voc.sqlite")
+    store = Storage(db)
+    hub = SimulatedSensorHub(seed=2)
+    for i in range(1200):
+        store.add_sample(hub.read(now=time.time() - 1200 + i))
+    store.commit()
+    stop = threading.Event()
+
+    def logger():
+        st, h = Storage(db), SimulatedSensorHub(seed=1)
+        while not stop.is_set():
+            st.add_sample(h.read())
+            st.commit()
+            time.sleep(0.2)
+    threading.Thread(target=logger, daemon=True).start()
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda msg="": prompts.append(msg) or "")
+    monkeypatch.setattr(guided, "_beep", lambda: None)
+    m = 2 / 60
+    guided.run(db, rounds=1, compound_min=m, clean_min=m, recovery_min=m, baseline_min=m,
+               session="B1", setup="box")
+    stop.set()
+    printed = capsys.readouterr().out
+    assert "box setup" in printed
+    assert any("CLOSE the lid again" in p for p in prompts)
+    assert any("inside the box" in p for p in prompts)
+    cfg = {"device": {"data_dir": str(tmp_path)}}
+    cli.cmd_sessions(None, cfg)
+    assert "B1: clean" in capsys.readouterr().out

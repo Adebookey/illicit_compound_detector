@@ -19,18 +19,40 @@ import time
 from .schema import CLEAN_LABEL, POSITIVE_LABEL
 from .storage import Storage
 
+# Dried plant material gives off very little vapour at room temperature, so
+# in open air the sensors only react at a few centimetres.
 PLACEMENTS = [
-    "about 10 cm from the device, container OPEN",
-    "about 30 cm from the device, container OPEN",
     "about 5 cm from the device, container OPEN",
-    "about 1 m from the device, container OPEN",
-    "about 10 cm from the device, inside a CLOSED bag/container",
-    "about 50 cm from the device, container OPEN",
+    "about 3 cm from the device, container OPEN",
+    "about 5 cm from the device, container OPEN, sample lightly crushed",
+    "about 10 cm from the device, container OPEN",
 ]
 
-REMOVE = ("REMOVE the compound: seal it and take it OUT of the room. "
-          "Air the room briefly if you can.")
-
+# Closed-box setup: device and sample share a small closed space (box,
+# drawer, cabinet), so the vapour builds up instead of dispersing.
+SETUPS = {
+    "open": {
+        "ready": "Ready? Compound sealed and out of the room, nobody spraying/cooking nearby.",
+        "place": "PLACE the compound {where}.",
+        "remove": "REMOVE the compound: seal it and take it OUT of the room. "
+                  "Air the room briefly if you can.",
+        "reclose": None,
+        "smell": "OTHER SMELL: put '{name}' near the device (about 20-50 cm), the way it "
+                 "would occur normally (e.g. one spray of perfume).",
+        "smell_remove": "Remove '{name}' and air the room if you can.",
+    },
+    "box": {
+        "ready": "Ready? Device INSIDE the box, lid CLOSED, compound sealed and out of the room.",
+        "place": "Open the lid, put the compound (container OPEN) inside the box next to the "
+                 "device, and CLOSE the lid.",
+        "remove": "Take the compound OUT of the box (seal it, out of the room) and leave the "
+                  "lid OPEN to air the box out.",
+        "reclose": "CLOSE the lid again (box empty apart from the device).",
+        "smell": "OTHER SMELL: put a SMALL amount of '{name}' in the box (e.g. one spray of "
+                 "perfume on a tissue, a few drops of alcohol on a cotton pad) and CLOSE the lid.",
+        "smell_remove": "Take the '{name}' out and leave the lid OPEN to air the box out.",
+    },
+}
 
 class StoppedEarly(Exception):
     pass
@@ -111,9 +133,11 @@ def _running_minutes(store):
 
 
 def run(db_path, rounds=4, compound_min=10.0, clean_min=10.0, recovery_min=3.0,
-        baseline_min=10.0, confounders=(), confounder_min=5.0, session=None, warmup_min=15.0):
+        baseline_min=10.0, confounders=(), confounder_min=5.0, session=None, warmup_min=15.0,
+        setup="open"):
     store = Storage(db_path)
-    session = session or "S" + dt.datetime.now().strftime("%Y%m%d-%H%M")
+    text = SETUPS[setup]
+    session = session or ("B" if setup == "box" else "S") + dt.datetime.now().strftime("%Y%m%d-%H%M")
 
     up = _running_minutes(store)
     if up is None:
@@ -122,37 +146,43 @@ def run(db_path, rounds=4, compound_min=10.0, clean_min=10.0, recovery_min=3.0,
 
     total = (baseline_min + rounds * (compound_min + recovery_min + clean_min)
              + len(confounders) * (confounder_min + recovery_min + clean_min))
-    print(f"\nGuided session '{session}': {rounds} compound rounds"
+    print(f"\nGuided session '{session}' ({setup} setup): {rounds} compound rounds"
           f"{', confounders: ' + ', '.join(confounders) if confounders else ''}")
     print(f"Takes about {total:.0f} minutes. Keep the device in the same place throughout.")
     print("Ctrl+C stops at any time; everything recorded so far is kept.\n")
     print("Before starting: the compound must be SEALED and OUTSIDE this room.")
+    if setup == "box":
+        print("Box setup: put the device inside a box/drawer/cabinet (roughly shoebox to "
+              "50 L size), leave the power cable through a small gap, and close the lid.")
 
     try:
         if up < warmup_min:
             print(f"\nSensors have only been running {up:.0f} min. Warming up first "
                   f"(they need ~{warmup_min:.0f} min to settle).")
             _live_wait(store, (warmup_min - up) * 60, "warm-up")
-        _ask("Ready? Compound sealed and out of the room, nobody spraying/cooking nearby.")
+        _ask(text["ready"])
         print("Recording clean-air baseline...")
         _period(store, CLEAN_LABEL, baseline_min, session, "baseline", "baseline")
 
         for i in range(rounds):
-            where = PLACEMENTS[i % len(PLACEMENTS)]
-            _ask(f"Round {i + 1}/{rounds}: PLACE the compound {where}.")
+            where = PLACEMENTS[i % len(PLACEMENTS)] if setup == "open" else "closed box"
+            _ask(f"Round {i + 1}/{rounds}: " + text["place"].format(where=where))
             _period(store, POSITIVE_LABEL, compound_min, session, f"round {i + 1}: {where}", "COMPOUND")
-            _ask(REMOVE)
+            _ask(text["remove"])
             print("Letting the sensors recover (this part is not used for training)...")
             _live_wait(store, recovery_min * 60, "recovery")
+            if text["reclose"]:
+                _ask(text["reclose"])
             _period(store, CLEAN_LABEL, clean_min, session, f"after round {i + 1}", "clean")
 
         for name in confounders:
             label = f"confounder:{name.strip().lower().replace(' ', '_')}"
-            _ask(f"OTHER SMELL: put '{name}' near the device (about 20-50 cm), "
-                 "the way it would occur normally (e.g. one spray of perfume).")
+            _ask(text["smell"].format(name=name))
             _period(store, label, confounder_min, session, name, name[:10])
-            _ask(f"Remove '{name}' and air the room if you can.")
+            _ask(text["smell_remove"].format(name=name))
             _live_wait(store, recovery_min * 60, "recovery")
+            if text["reclose"]:
+                _ask(text["reclose"])
             _period(store, CLEAN_LABEL, clean_min, session, f"after {name}", "clean")
     except StoppedEarly:
         print("\nStopped early. Everything recorded up to now is saved.")

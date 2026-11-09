@@ -103,6 +103,26 @@ compound → 3 min recovery → 10 min clean).
   voc-detector guided --confounders "perfume,hand sanitiser,cooking"
   ```
 
+### Weak response? Use the closed-box setup
+
+Dried plant material gives off very little vapour. In open air the sensors may
+only react within a few centimetres, while perfume or alcohol produce
+responses hundreds of times larger. Check with `voc-detector review` after a
+session. If the compound rows barely change, put the device and the sample
+together in a small closed space (a plastic storage box, drawer or cabinet)
+so the vapour builds up:
+
+```bash
+voc-detector guided --setup box
+voc-detector guided --setup box --confounders "perfume,isopropyl alcohol" --recovery-min 10
+```
+
+Train only on the sessions that worked (`voc-detector sessions` lists them):
+
+```bash
+voc-detector train --only B20261110-1000,B20261110-1300,B20261111-0900
+```
+
 ## 5. Train on the Pi (5-10 min)
 
 ```bash

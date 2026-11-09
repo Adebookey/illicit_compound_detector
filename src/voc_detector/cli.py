@@ -163,7 +163,25 @@ def cmd_guided(args, cfg):
     guided.run(_db(cfg), rounds=args.rounds, compound_min=args.compound_min,
                clean_min=args.clean_min, recovery_min=args.recovery_min,
                baseline_min=args.baseline_min, confounders=confs,
-               confounder_min=args.confounder_min, session=args.session)
+               confounder_min=args.confounder_min, session=args.session, setup=args.setup)
+
+
+def cmd_sessions(args, cfg):
+    store = Storage(_db(cfg))
+    per = {}
+    for lb in store.labels():
+        if not lb["end_ts"]:
+            continue
+        d = per.setdefault(lb["session"], {"start": lb["start_ts"], "mins": {}})
+        d["mins"][lb["label"]] = d["mins"].get(lb["label"], 0) + (lb["end_ts"] - lb["start_ts"]) / 60
+    if not per:
+        print("No sessions yet.")
+        return
+    for name, d in sorted(per.items(), key=lambda kv: kv[1]["start"]):
+        parts = ", ".join(f"{k.split(':')[-1]} {v:.0f}m" for k, v in sorted(d["mins"].items()))
+        print(f"{name}: {parts}")
+    print("\nB... = box setup, S... = open setup. Train on chosen ones with:\n"
+          "  voc-detector train --only NAME1,NAME2,NAME3")
 
 
 def cmd_review(args, cfg):
@@ -181,6 +199,13 @@ def cmd_train(args, cfg):
                  "  sudo apt install -y python3-pandas python3-sklearn")
     store = Storage(_db(cfg))
     labels = [lb for lb in store.labels() if lb["end_ts"]]
+    only = {x.strip() for x in (args.only or "").split(",") if x.strip()}
+    skip = {x.strip() for x in (args.skip or "").split(",") if x.strip()}
+    if only:
+        labels = [lb for lb in labels if lb["session"] in only]
+    labels = [lb for lb in labels if lb["session"] not in skip]
+    if only or skip:
+        print("training on sessions: " + ", ".join(sorted({lb["session"] for lb in labels})))
     sessions = {lb["session"] for lb in labels if lb["label"] == POSITIVE_LABEL}
     if not sessions:
         sys.exit("No labelled compound data yet. Run:  voc-detector guided")
@@ -276,6 +301,9 @@ def main(argv=None):
                    help="comma-separated other smells to record, e.g. 'perfume,hand sanitiser'")
     g.add_argument("--confounder-min", type=float, default=5)
     g.add_argument("-s", "--session", help="session name (default: date and time)")
+    g.add_argument("--setup", choices=["open", "box"], default="open",
+                   help="open = sample placed near the device in the room; "
+                        "box = device and sample together in a closed box")
 
     t = sub.add_parser("train", help="train a model on this Pi from the collected sessions")
     t.add_argument("--model", choices=["logreg", "gbt", "auto"], default="logreg",
@@ -284,8 +312,12 @@ def main(argv=None):
     t.add_argument("--training-dir", default="/opt/voc-detector/training")
     t.add_argument("--no-install", action="store_true", help="train but don't install the model")
     t.add_argument("--force", action="store_true", help="train even with fewer than 3 sessions")
+    t.add_argument("--only", help="comma-separated session names to train on (see: voc-detector sessions)")
+    t.add_argument("--skip", help="comma-separated session names to leave out")
     t.add_argument("--install-anyway", action="store_true",
                    help="install the model even if it failed its validation test")
+
+    sub.add_parser("sessions", help="list recorded sessions")
 
     rv = sub.add_parser("review", help="how much each sensor reacted in each recorded period")
     rv.add_argument("-s", "--session", help="only this session")
@@ -302,7 +334,8 @@ def main(argv=None):
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = config_mod.load(args.config)
     {"run": cmd_run, "guided": cmd_guided, "check": cmd_check, "collect": cmd_collect, "status": cmd_status,
-     "export": cmd_export, "train": cmd_train, "review": cmd_review}[args.cmd](args, cfg)
+     "export": cmd_export, "train": cmd_train, "review": cmd_review,
+     "sessions": cmd_sessions}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":
