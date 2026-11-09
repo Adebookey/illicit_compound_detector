@@ -52,7 +52,7 @@ def test_train_on_device_from_guided_sessions(tmp_path, capsys):
     cfg = _cfg(tmp_path)
     _simulate_guided_sessions(Storage(cli._db(cfg)))
     args = cli.argparse.Namespace(model="logreg", max_false_alarms=0.25, no_install=False, force=False,
-                                  training_dir=os.path.join(ROOT, "training"))
+                                  install_anyway=False, training_dir=os.path.join(ROOT, "training"))
     cli.cmd_train(args, cfg)
     spec = json.load(open(cfg["device"]["model_path"]))
     assert spec["metrics"]["validation"] == "session"
@@ -102,3 +102,27 @@ def test_guided_records_labels(tmp_path, monkeypatch):
     assert labels == [("clean", "T1"), ("compound", "T1"), ("clean", "T1"), ("compound", "T1"),
                       ("clean", "T1"), ("confounder:perfume", "T1"), ("clean", "T1")]
     assert all(lb["end_ts"] for lb in Storage(db).labels())
+
+
+def test_review_shows_sensor_response(tmp_path, capsys):
+    from voc_detector import review
+    db = str(tmp_path / "voc.sqlite")
+    _simulate_guided_sessions(Storage(db), n_sessions=1)
+    review.run(db)
+    out = capsys.readouterr().out
+    assert "clean wobble" in out and out.count("cmp") == 4 and "perfume" in out
+
+
+def test_train_does_not_install_a_failing_model(tmp_path, capsys):
+    cfg = _cfg(tmp_path)
+    store = Storage(cli._db(cfg))
+    _simulate_guided_sessions(store)
+    # sabotage: the "compound" periods get no gas at all -> nothing to learn
+    store.db.execute("UPDATE samples SET ens_tvoc=40, ens_eco2=420, ens_aqi=1, "
+                     "ens_hp0_rs=120000, ens_hp2_rs=40000, sgp_raw=30000, sgp_voc_index=100")
+    store.commit()
+    args = cli.argparse.Namespace(model="logreg", max_false_alarms=0.25, no_install=False, force=False,
+                                  install_anyway=False, training_dir=os.path.join(ROOT, "training"))
+    cli.cmd_train(args, cfg)
+    assert not os.path.exists(cfg["device"]["model_path"])
+    assert "NOT INSTALLED" in capsys.readouterr().out

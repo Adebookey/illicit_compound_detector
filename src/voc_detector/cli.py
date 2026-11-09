@@ -166,6 +166,11 @@ def cmd_guided(args, cfg):
                confounder_min=args.confounder_min, session=args.session)
 
 
+def cmd_review(args, cfg):
+    from . import review
+    review.run(_db(cfg), args.session)
+
+
 def cmd_train(args, cfg):
     """Train on the Pi itself from everything collected with `guided`/`collect`."""
     try:
@@ -223,6 +228,15 @@ def cmd_train(args, cfg):
     if args.no_install:
         print(f"model saved to {out} (not installed)")
         return
+    import json
+    m = json.load(open(out)).get("metrics", {})
+    if (m.get("roc_auc", 0) < 0.8 or m.get("recall", 0) < 0.5) and not args.install_anyway:
+        print(f"\nNOT INSTALLED: the model did not pass its test on unseen sessions "
+              f"(ROC-AUC {m.get('roc_auc', 0):.2f}, caught {m.get('detected_periods')}/"
+              f"{m.get('compound_periods')} compound periods).")
+        print("Run `voc-detector review` to see whether the sensors react to the compound.")
+        print("(To install it anyway: voc-detector train --install-anyway)")
+        return
     dest = cfg["device"]["model_path"]
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if os.path.exists(dest):
@@ -270,6 +284,11 @@ def main(argv=None):
     t.add_argument("--training-dir", default="/opt/voc-detector/training")
     t.add_argument("--no-install", action="store_true", help="train but don't install the model")
     t.add_argument("--force", action="store_true", help="train even with fewer than 3 sessions")
+    t.add_argument("--install-anyway", action="store_true",
+                   help="install the model even if it failed its validation test")
+
+    rv = sub.add_parser("review", help="how much each sensor reacted in each recorded period")
+    rv.add_argument("-s", "--session", help="only this session")
 
     sub.add_parser("check", help="health check: service, sensors, battery, model")
     sub.add_parser("status", help="show the latest reading and queue size")
@@ -283,7 +302,7 @@ def main(argv=None):
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = config_mod.load(args.config)
     {"run": cmd_run, "guided": cmd_guided, "check": cmd_check, "collect": cmd_collect, "status": cmd_status,
-     "export": cmd_export, "train": cmd_train}[args.cmd](args, cfg)
+     "export": cmd_export, "train": cmd_train, "review": cmd_review}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":
