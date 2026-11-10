@@ -34,8 +34,9 @@ browser on a laptop or phone **on the same Wi-Fi as the Pi** (if `.local`
 doesn't work, use the number address it also prints).
 
 - `/` shows **live readings**: big numbers, the change from baseline, and
-  10-minute charts. The buttons mark when you bring each item close (the
-  markers are saved, so a later `voc-detector evidence` includes the demo).
+  10-minute charts. The buttons mark when you bring each item close. Demo
+  runs are kept out of the report (add `--include-demo` to `evidence` if you
+  ever want them in).
 - `/report` shows the report. Press **Save as PDF / Print** at the top and
   choose **Save as PDF** as the printer. (Android Chrome: if the button does
   nothing, use the menu ⋮ → Share → Print.) `/data.csv` downloads the raw data.
