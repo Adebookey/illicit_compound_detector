@@ -184,6 +184,25 @@ def cmd_sessions(args, cfg):
           "  voc-detector train --only NAME1,NAME2,NAME3")
 
 
+def cmd_placement(args, cfg):
+    """List compound trials' placements, or correct one placement for all sessions."""
+    store = Storage(_db(cfg))
+    if args.change:
+        if not args.to:
+            sys.exit("use --to, e.g.  voc-detector placement --change \"10 cm\" --to \"close range\"")
+        old, new = f"about {args.change}", ("at close range" if args.to == "close range" else f"about {args.to}")
+        cur = store.db.execute(
+            "UPDATE labels SET notes = REPLACE(notes, ?, ?) WHERE label = 'compound' "
+            "AND notes LIKE ? AND session NOT LIKE 'DEMO-%'" + (" AND session = ?" if args.session else ""),
+            (old, new, f"%{old}%") + ((args.session,) if args.session else ()))
+        store.commit()
+        print(f"changed {cur.rowcount} compound trial(s): '{old}' -> '{new}'")
+    for lb in store.labels():
+        if lb["label"] == "compound" and not str(lb["session"]).startswith("DEMO-"):
+            print(f"{lb['session']:<18} {lb['notes']}")
+    print("\nThen re-create the report:  voc-detector evidence")
+
+
 def cmd_evidence(args, cfg):
     from . import evidence
     only = {x.strip() for x in (args.only or "").split(",") if x.strip()} or None
@@ -344,6 +363,11 @@ def main(argv=None):
 
     sub.add_parser("sessions", help="list recorded sessions")
 
+    pl = sub.add_parser("placement", help="list or correct the recorded distance of compound trials")
+    pl.add_argument("--change", help='distance as recorded, e.g. "10 cm"')
+    pl.add_argument("--to", help='what it really was, e.g. "close range" or "3 cm"')
+    pl.add_argument("-s", "--session", help="only this session (default: all)")
+
     ev = sub.add_parser("evidence", help="results report (HTML) + raw data (CSV) from recorded sessions")
     ev.add_argument("--out", default="~/evidence")
     ev.add_argument("--only", help="comma-separated session names to include (default: all)")
@@ -372,7 +396,7 @@ def main(argv=None):
     cfg = config_mod.load(args.config)
     {"run": cmd_run, "guided": cmd_guided, "check": cmd_check, "collect": cmd_collect, "status": cmd_status,
      "export": cmd_export, "train": cmd_train, "review": cmd_review,
-     "sessions": cmd_sessions, "evidence": cmd_evidence, "demo": cmd_demo, "watch": cmd_watch}[args.cmd](args, cfg)
+     "sessions": cmd_sessions, "evidence": cmd_evidence, "placement": cmd_placement, "demo": cmd_demo, "watch": cmd_watch}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":

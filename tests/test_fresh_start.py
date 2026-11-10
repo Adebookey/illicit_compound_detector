@@ -207,3 +207,18 @@ def test_evidence_skips_demo_sessions(tmp_path):
     lid = st.start_label("compound", "DEMO-20261110-0900", "live demo: compound")
     st.end_label(lid)
     assert all(not p["session"].startswith("DEMO-") for p in evidence.collect(st))
+
+
+def test_placement_relabel_groups_close_range(tmp_path, capsys):
+    import realistic
+    from voc_detector import evidence
+    cfg = _cfg(tmp_path)
+    realistic.make(Storage(cli._db(cfg)))
+    for d in ("5 cm", "10 cm"):
+        cli.cmd_placement(cli.argparse.Namespace(change=d, to="close range", session=None), cfg)
+    groups = {p["group"] for p in evidence.collect(Storage(cli._db(cfg)))}
+    assert "compound at close range" in groups
+    assert not {"compound at 5 cm", "compound at 10 cm"} & groups
+    report, _, _ = evidence.build(cli._db(cfg), str(tmp_path / "ev"), str(tmp_path))
+    page = open(report).read()
+    assert "Options worth considering" not in page and "Close range:" in page and "window.print()" in page

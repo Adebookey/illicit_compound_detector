@@ -38,6 +38,8 @@ def group_of(label, notes):
         n = notes or ""
         if "closed box" in n:
             return "compound (closed box)"
+        if "close range" in n:
+            return "compound at close range"
         m = re.search(r"(\d+)\s*(cm|m)\b", n)
         if m:
             return f"compound at {m.group(1)} {m.group(2)}"
@@ -50,6 +52,8 @@ def group_of(label, notes):
 def _group_order(g):
     if g == "clean air":
         return (0, 0, g)
+    if g == "compound at close range":
+        return (1, 0, g)
     if g.startswith("compound"):
         m = re.search(r"at (\d+) (cm|m)", g)
         dist = (int(m.group(1)) * (100 if m.group(2) == "m" else 1)) if m else 9999
@@ -375,6 +379,10 @@ def build(db_path, out_dir, data_dir, sessions=None, include_demo=False):
     last = dt.datetime.fromtimestamp(periods[-1]["end_ts"]).strftime("%d %b %Y")
     n_sessions = len(by_session)
 
+    close_note = ("<li><b>Close range:</b> in these trials the operator moved the sample closer than "
+                  "the planned distance during the trial (to within about 5 cm of the sensors), "
+                  "because the sensors showed little response.</li>"
+                  if any(p["group"] == "compound at close range" for p in periods) else "")
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -382,6 +390,8 @@ def build(db_path, out_dir, data_dir, sessions=None, include_demo=False):
 <style>{_CSS}</style></head>
 <body><main>
 <h1>VOC sensor test results</h1>
+<p class="noprint"><button onclick="window.print()">Save as PDF / Print</button>
+<span class="note">In the print window choose <b>Save as PDF</b> as the printer/destination.</span></p>
 <p class="meta">Device <b>{html.escape(socket.gethostname())}</b> &middot; ENS160 + SGP40 gas sensors, DHT22 temperature/humidity
 &middot; {n_sessions} session(s), {first} &ndash; {last} &middot; report generated {dt.datetime.now().strftime("%d %b %Y %H:%M")}</p>
 
@@ -390,14 +400,14 @@ def build(db_path, out_dir, data_dir, sessions=None, include_demo=False):
 
 <h2>Typical rise in Total VOC, per item</h2>
 <p class="note">Median of the highest reading during each trial minus the average of the 3 minutes before it.</p>
-{bars_svg(summary, "ens_tvoc", "ppb", classes)}
+<div class="scroll">{bars_svg(summary, "ens_tvoc", "ppb", classes)}</div>
 
 <h2>One full session, minute by minute</h2>
 <p class="note">Session {html.escape(show)}. Shaded bands mark when each item was next to the sensor. The second chart is the same data with the vertical axis zoomed in, so the compound periods can be seen in detail.</p>
 <div class="legend">{legend}</div>
-{timeline_svg(tvoc_pts, shades, "Total VOC (ENS160)", "ppb")}
-{timeline_svg(tvoc_pts, shades, "Total VOC (ENS160), zoomed in", "ppb", y_max=zoom_max)}
-{timeline_svg(voc_pts, shades, "VOC index (SGP40)", "index")}
+<div class="scroll">{timeline_svg(tvoc_pts, shades, "Total VOC (ENS160)", "ppb")}</div>
+<div class="scroll">{timeline_svg(tvoc_pts, shades, "Total VOC (ENS160), zoomed in", "ppb", y_max=zoom_max)}</div>
+<div class="scroll">{timeline_svg(voc_pts, shades, "VOC index (SGP40)", "index")}</div>
 
 <h2>Summary table</h2>
 <p class="note">Rise during the trial vs. the 3 minutes before: <b>median</b> <span class="dim">/ largest</span>. The clean-air row uses the same calculation on periods with nothing added, so it shows the normal background fluctuation.</p>
@@ -411,7 +421,7 @@ def build(db_path, out_dir, data_dir, sessions=None, include_demo=False):
 <ul>
 <li>The device logged every sensor once per second. A guided program told the operator when to place and remove each item and recorded the exact times, so periods were labelled automatically.</li>
 <li>Each compound trial: the dried sample in an open container at the stated distance from the sensors for 10 minutes, followed by recovery and at least 10 minutes of clean air.</li>
-<li>"Clean air" periods directly after perfume or alcohol are excluded from the clean-air comparison because the room was still clearing.</li>
+{close_note}<li>"Clean air" periods directly after perfume or alcohol are excluded from the clean-air comparison because the room was still clearing.</li>
 <li>Other items (perfume, isopropyl alcohol) were introduced the same way, after the compound trials.</li>
 <li>The full raw readings for every period are in <b>data.csv</b> next to this report.</li>
 </ul>
@@ -423,14 +433,6 @@ def build(db_path, out_dir, data_dir, sessions=None, include_demo=False):
 <li>Training a model cannot add a signal the sensors do not measure; on this data it performed at chance level.</li>
 </ul>
 
-<h2>Options worth considering</h2>
-<ul>
-<li><b>Confirm what is detectable first:</b> have a lab analyse air from real bins with and without the compound (headspace GC-MS). This shows whether any marker compound is present above the waste background before investing in hardware.</li>
-<li><b>Selective instruments:</b> ion mobility spectrometry (used for narcotics screening), portable or micro gas chromatography, or a photo-ionisation detector paired with a sampling pump. These are more sensitive and/or more selective than metal-oxide sensors, at higher cost.</li>
-<li><b>Sample concentration:</b> pumping bin air through a sorbent tube that collects vapour over time, then releasing it to the sensor in one burst, can raise sensitivity a lot. This is development work with no guarantee.</li>
-<li><b>Different deployment:</b> closer, enclosed sampling (e.g. a small sealed compartment or a disposal chute with an air pump) rather than an open bin.</li>
-<li>Trained detection dogs remain the established method for trace narcotics in mixed waste.</li>
-</ul>
 </main></body></html>"""
     report = os.path.join(out_dir, "report.html")
     with open(report, "w") as f:
@@ -459,5 +461,7 @@ i.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:
 table{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border-radius:10px;overflow:hidden;display:block;overflow-x:auto}
 th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--grid);vertical-align:top}th{color:var(--muted);font-weight:500}
 td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
-@media print{body{background:#fff}svg,table{break-inside:avoid}}
+.scroll{overflow-x:auto}.scroll svg{min-width:680px}
+button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--axis);background:var(--surface);color:var(--ink);cursor:pointer;margin-right:8px}
+@media print{body{background:#fff}svg,table{break-inside:avoid}.noprint{display:none}.scroll svg{min-width:0}}
 """

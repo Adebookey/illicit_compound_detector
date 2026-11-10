@@ -14,6 +14,15 @@ Everything is computed from the readings the device logged. To leave out a
 session, list the ones to keep: `voc-detector evidence --only S...,S...`
 (`voc-detector sessions` shows the names).
 
+If you moved the sample closer than the planned distance during some rounds,
+correct the record first (applies to all sessions), then re-create the report:
+
+```bash
+voc-detector placement --change "5 cm" --to "close range"
+voc-detector placement --change "10 cm" --to "close range"
+voc-detector evidence
+```
+
 ## Viewing it and the live demo
 
 ```bash
@@ -27,8 +36,9 @@ doesn't work, use the number address it also prints).
 - `/` shows **live readings**: big numbers, the change from baseline, and
   10-minute charts. The buttons mark when you bring each item close (the
   markers are saved, so a later `voc-detector evidence` includes the demo).
-- `/report` shows the report. Use the browser's **Print → Save as PDF** to
-  keep or email it. `/data.csv` downloads the raw data.
+- `/report` shows the report. Press **Save as PDF / Print** at the top and
+  choose **Save as PDF** as the printer. (Android Chrome: if the button does
+  nothing, use the menu ⋮ → Share → Print.) `/data.csv` downloads the raw data.
 
 At the client's site, bring your phone and use its hotspot for both the Pi
 and the laptop (add the hotspot first with `sudo detector-wifi add ...`).
